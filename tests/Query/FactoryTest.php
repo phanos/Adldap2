@@ -3,9 +3,9 @@
 namespace Adldap\Tests\Classes;
 
 use Adldap\Query\Builder;
-use Adldap\Query\Grammar;
 use Adldap\Query\Factory;
 use Adldap\Tests\TestCase;
+use Adldap\Schemas\OpenLDAP;
 
 class FactoryTest extends TestCase
 {
@@ -58,8 +58,19 @@ class FactoryTest extends TestCase
         $query = $search->users();
 
         $this->assertInstanceOf(Builder::class, $query);
+        $this->assertCount(3, $query->filters['and']);
+        $this->assertEquals('(&(objectclass=\75\73\65\72)(objectcategory=\70\65\72\73\6f\6e)(!(objectclass=\63\6f\6e\74\61\63\74)))', $query->getQuery());
+    }
+
+    public function test_openldap_user_scope()
+    {
+        $search = $this->newSearchFactory(null, 'dc=corp,dc=org', new OpenLDAP());
+
+        $query = $search->users();
+
+        $this->assertInstanceOf(Builder::class, $query);
         $this->assertCount(2, $query->filters['and']);
-        $this->assertEquals('(&(objectclass=\70\65\72\73\6f\6e)(objectcategory=\70\65\72\73\6f\6e))', $query->getQuery());
+        $this->assertEquals('(&(objectclass=\69\6e\65\74\6f\72\67\70\65\72\73\6f\6e)(objectclass=\70\65\72\73\6f\6e))', $query->getQuery());
     }
 
     public function test_printer_scope()

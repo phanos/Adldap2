@@ -116,20 +116,29 @@ class Factory
     }
 
     /**
-     * Returns a query builder limited to users.
+     * Returns a query builder scoped to users.
      *
      * @return Builder
      */
     public function users()
     {
-        return $this->where([
-            $this->schema->objectClass()    => $this->schema->objectClassPerson(),
-            $this->schema->objectCategory() => $this->schema->objectCategoryPerson(),
-        ]);
+        $wheres = [
+            [$this->schema->objectClass(), Operator::$equals, $this->schema->objectClassUser()],
+            [$this->schema->objectCategory(), Operator::$equals, $this->schema->objectCategoryPerson()]
+        ];
+
+        // OpenLDAP doesn't like specifying the omission of user objectclasses
+        // equal to `contact`. We'll make sure we're working with
+        // ActiveDirectory before adding this filter.
+        if (is_a($this->schema, ActiveDirectory::class)) {
+            $wheres[] = [$this->schema->objectClass(), Operator::$doesNotEqual, $this->schema->objectClassContact()];
+        }
+
+        return $this->where($wheres);
     }
 
     /**
-     * Returns a query builder limited to printers.
+     * Returns a query builder scoped to printers.
      *
      * @return Builder
      */
@@ -141,7 +150,7 @@ class Factory
     }
 
     /**
-     * Returns a query builder limited to organizational units.
+     * Returns a query builder scoped to organizational units.
      *
      * @return Builder
      */
@@ -153,7 +162,7 @@ class Factory
     }
 
     /**
-     * Returns a query builder limited to groups.
+     * Returns a query builder scoped to groups.
      *
      * @return Builder
      */
@@ -165,7 +174,7 @@ class Factory
     }
 
     /**
-     * Returns a query builder limited to exchange servers.
+     * Returns a query builder scoped to containers.
      *
      * @return Builder
      */
@@ -177,7 +186,7 @@ class Factory
     }
 
     /**
-     * Returns a query builder limited to exchange servers.
+     * Returns a query builder scoped to contacts.
      *
      * @return Builder
      */
@@ -189,7 +198,7 @@ class Factory
     }
 
     /**
-     * Returns a query builder limited to exchange servers.
+     * Returns a query builder scoped to computers.
      *
      * @return Builder
      */

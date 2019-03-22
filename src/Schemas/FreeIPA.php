@@ -2,7 +2,7 @@
 
 namespace Adldap\Schemas;
 
-class FreeIPA extends BaseSchema
+class FreeIPA extends Schema
 {
     /**
      * {@inheritdoc}
@@ -74,6 +74,14 @@ class FreeIPA extends BaseSchema
     public function objectClassPerson()
     {
         return 'person';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function objectClassUser()
+    {
+        return 'organizationalPerson';
     }
 
     /**

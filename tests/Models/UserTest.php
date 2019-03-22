@@ -8,6 +8,9 @@ use Adldap\Models\User;
 use Adldap\Models\Entry;
 use Adldap\Query\Builder;
 use Adldap\Tests\TestCase;
+use Adldap\Models\Attributes\AccountControl;
+use Adldap\Models\Attributes\TSProperty;
+use Adldap\Models\Attributes\TSPropertyArray;
 
 class UserTest extends TestCase
 {
@@ -18,22 +21,49 @@ class UserTest extends TestCase
         return new User($attributes, $builder);
     }
 
-
-    public function test_set_password()
+    public function test_set_password_on_new_user()
     {
         $connection = $this->newConnectionMock();
 
-        $connection->shouldReceive('isUsingSSL')->once()->andReturn(true);
+        $connection->shouldReceive('canChangePasswords')->once()->andReturn(true);
 
         $user = new User([], $this->newBuilder($connection));
 
-        $user->setPassword('');
+        $password = 'password';
+
+        $user->setPassword($password);
+
+        $expected = [
+            [
+                'attrib'    => 'unicodepwd',
+                'modtype'   => 1,
+                'values'    => [Utilities::encodePassword($password)],
+            ],
+        ];
+
+        $this->assertEquals($expected, $user->getModifications());
+    }
+
+    public function test_set_password_on_existing_user()
+    {
+        $connection = $this->newConnectionMock();
+
+        $connection->shouldReceive('canChangePasswords')->once()->andReturn(true);
+
+        $user = new User([], $this->newBuilder($connection));
+
+        // Force existing user.
+        $user->exists = true;
+
+        $password = 'password';
+
+        $user->setPassword($password);
 
         $expected = [
             [
                 'attrib'    => 'unicodepwd',
                 'modtype'   => 3,
-                'values'    => [Utilities::encodePassword('')],
+                'values'    => [Utilities::encodePassword($password)],
             ],
         ];
 
@@ -47,8 +77,7 @@ class UserTest extends TestCase
     {
         $connection = $this->newConnectionMock();
 
-        $connection->shouldReceive('isUsingSSL')->once()->andReturn(false);
-        $connection->shouldReceive('isUsingTLS')->once()->andReturn(false);
+        $connection->shouldReceive('canChangePasswords')->once()->andReturn(false);
 
         $user = new User([], $this->newBuilder($connection));
 
@@ -62,7 +91,7 @@ class UserTest extends TestCase
     {
         $connection = $this->newConnectionMock();
 
-        $connection->shouldReceive('isUsingSSL')->once()->andReturn(true);
+        $connection->shouldReceive('canChangePasswords')->once()->andReturn(true);
         $connection->shouldReceive('modifyBatch')->once()->andReturn(false);
         $connection->shouldReceive('getExtendedError')->once()->andReturn('error');
         $connection->shouldReceive('getExtendedErrorCode')->once()->andReturn('0000052D');
@@ -79,7 +108,7 @@ class UserTest extends TestCase
     {
         $connection = $this->newConnectionMock();
 
-        $connection->shouldReceive('isUsingSSL')->once()->andReturn(true);
+        $connection->shouldReceive('canChangePasswords')->once()->andReturn(true);
         $connection->shouldReceive('modifyBatch')->once()->andReturn(false);
         $connection->shouldReceive('getExtendedError')->once()->andReturn('error');
         $connection->shouldReceive('getExtendedErrorCode')->once()->andReturn('00000056');
@@ -96,8 +125,7 @@ class UserTest extends TestCase
     {
         $connection = $this->newConnectionMock();
 
-        $connection->shouldReceive('isUsingSSL')->once()->andReturn(false);
-        $connection->shouldReceive('isUsingTLS')->once()->andReturn(false);
+        $connection->shouldReceive('canChangePasswords')->once()->andReturn(false);
 
         $user = new User([], $this->newBuilder($connection));
 
@@ -252,5 +280,87 @@ class UserTest extends TestCase
         $user->setQuery($builder);
 
         $this->assertFalse($user->passwordExpired());
+    }
+
+    public function test_password_is_not_expired_when_uac_flag_is_set()
+    {
+        $model = $this->newUserModel([]);
+
+        $flag = AccountControl::NORMAL_ACCOUNT + AccountControl::DONT_EXPIRE_PASSWORD;
+
+        $model->setUserAccountControl($flag);
+
+        $this->assertFalse($model->passwordExpired());
+    }
+
+    public function test_password_is_not_expired_when_uac_flag_does_not_contain_dont_expire()
+    {
+        $model = $this->newUserModel([]);
+
+        $flag = AccountControl::NORMAL_ACCOUNT + AccountControl::PASSWD_NOTREQD;
+
+        $model->userAccountControl = $flag;
+        $model->pwdlastset = 0;
+
+        $this->assertTrue($model->passwordExpired());
+        $this->assertEquals([AccountControl::PASSWD_NOTREQD, AccountControl::NORMAL_ACCOUNT], $model->getUserAccountControlObject()->getValues());
+    }
+
+    public function test_get_userparameters()
+    {
+        $model = $this->newUserModel([
+            'userparameters' => (new TSPropertyArray(['CtxInitialProgram'=>'C:\\path\\bin.exe','CtxWorkDirectory'=>'C:\\path\\']))->toBinary()
+        ]);
+
+        $parameters = $model->getUserParameters();
+
+        $this->assertInstanceOf(TSPropertyArray::class, $parameters);
+        $this->assertTrue($parameters->has('CtxInitialProgram'));
+        $this->assertFalse($parameters->has('PropertyDoesNotExist'));
+        $this->assertEquals('C:\\path\\', $parameters->get('CtxWorkDirectory')->getValue());
+    }
+
+    public function test_set_user_parameters()
+    {
+        $model = $this->newUserModel([
+            'userparameters' => (new TSPropertyArray(['CtxInitialProgram'=>'C:\\path\\bin.exe','CtxWorkDirectory'=>'C:\\path\\']))->toBinary()
+        ]);
+
+        $parameters = $model->getUserParameters();
+
+        $parameters->set('CtxInitialProgram', 'C:\\path\\otherbin.exe');
+
+        $model->setUserParameters($parameters);
+
+        $this->assertTrue($parameters->has('CtxInitialProgram'));
+        $this->assertEquals('C:\\path\\otherbin.exe', $parameters->get('CtxInitialProgram')->getValue());
+    }
+
+    /**
+     * @expectedException \InvalidArgumentException
+     */
+    public function test_set_non_existant_user_parameters()
+    {
+        $model = $this->newUserModel([
+            'userparameters' => (new TSPropertyArray(['CtxInitialProgram'=>'C:\\path\\bin.exe','CtxWorkDirectory'=>'C:\\path\\']))->toBinary()
+        ]);
+
+        $parameters = $model->getUserParameters();
+
+        $parameters->set('CtxWFHomeDir', '/home/');
+    }
+
+    public function test_add_user_parameters()
+    {
+        $model = $this->newUserModel([
+            'userparameters' => (new TSPropertyArray(['CtxInitialProgram'=>'C:\\path\\bin.exe','CtxWorkDirectory'=>'C:\\path\\']))->toBinary()
+        ]);
+
+        $parameters = $model->getUserParameters();
+
+        $parameters->add((new TSProperty())->setName('CtxInitialProgram')->setValue('C:\\path\\otherbin.exe'));
+
+        $this->assertTrue($parameters->has('CtxInitialProgram'));
+        $this->assertEquals('C:\\path\\otherbin.exe', $parameters->get('CtxInitialProgram')->getValue());
     }
 }

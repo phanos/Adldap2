@@ -2,12 +2,21 @@
 
 namespace Adldap\Tests\Models;
 
-use Adldap\Models\Entry;
-use Adldap\Models\BatchModification;
+use Adldap\Adldap;
 use Adldap\Tests\TestCase;
+use Adldap\Models\Entry;
+use Adldap\Models\Model;
+use Adldap\Models\BatchModification;
+use Adldap\Models\Events\Created;
+use Adldap\Models\Events\Creating;
+use Adldap\Models\Events\Deleted;
+use Adldap\Models\Events\Deleting;
+use Adldap\Models\Events\Updated;
+use Adldap\Models\Events\Updating;
+use Adldap\Schemas\OpenLDAP;
 use Adldap\Schemas\ActiveDirectory;
 
-class EntryTest extends TestCase
+class ModelTest extends TestCase
 {
     protected function newModel(array $attributes = [], $builder = null, $schema = null)
     {
@@ -523,7 +532,7 @@ class EntryTest extends TestCase
         $this->assertEquals($expected, $entry->getAttributes());
     }
 
-    public function test_move()
+    public function test_rename()
     {
         $rawAttributes = [
             'dn' => 'cn=Doe,dc=corp,dc=acme,dc=org',
@@ -547,7 +556,34 @@ class EntryTest extends TestCase
 
         $entry->setRawAttributes($rawAttributes);
 
-        $this->assertTrue($entry->move($args[1], $args[2]));
+        $this->assertTrue($entry->rename($args[1], $args[2]));
+    }
+
+    public function test_move()
+    {
+        $rawAttributes = [
+            'dn' => 'cn=Doe,dc=corp,dc=acme,dc=org',
+        ];
+
+        $connection = $this->newConnectionMock();
+
+        $args = [
+            'cn=Doe,dc=corp,dc=acme,dc=org',
+            'cn=Doe',
+            'ou=Accounts,dc=corp,dc=amce,dc=org',
+            true,
+        ];
+
+        $connection
+            ->shouldReceive('rename')->once()->withArgs($args)->andReturn(true)
+            ->shouldReceive('read')->once()
+            ->shouldReceive('getEntries')->once();
+
+        $entry = $this->newModel([], $this->newBuilder($connection));
+
+        $entry->setRawAttributes($rawAttributes);
+
+        $this->assertTrue($entry->move($args[2]));
     }
 
     public function test_dn_is_constructed_when_none_given_and_create_is_called()
@@ -842,5 +878,213 @@ class EntryTest extends TestCase
         $model->setRawAttributes(['dn' => [$dn]]);
 
         $this->assertEquals($model->getDistinguishedName(), $dn);
+    }
+
+    public function test_get_managed_by_user_queries_for_user()
+    {
+        $dn = 'cn=Jdoe,dc=acme,dc=org';
+
+        $managedByUser = $this->newModel(compact('dn'));
+
+        $b = $this->newBuilderMock();
+
+        $b->shouldReceive('newInstance')->once()->andReturnSelf()
+            ->shouldReceive('findByDn')->once()->with($dn)->andReturn($managedByUser);
+
+        $model = $this->newModel(['managedby' => $dn], $b);
+
+        $this->assertEquals($managedByUser, $model->getManagedByUser());
+    }
+
+    public function test_set_managed_by_accepts_model_instance()
+    {
+        $model = $this->newModel();
+
+        $dn = 'cn=Jdoe,dc=acme,dc=org';
+
+        $managedByUser = $this->newModel(compact('dn'));
+
+        $model->setManagedBy($managedByUser);
+
+        $this->assertEquals($dn, $model->getManagedBy());
+    }
+
+    public function test_case_sensitivity_for_setting_and_retrieving_attributes()
+    {
+        $m = $this->newModel([
+            'CN' => 'John Doe',
+            'givenName' => 'Doe, John',
+            'memberOf' => [],
+        ]);
+
+        $this->assertEquals('John Doe', $m->getFirstAttribute('cn'));
+        $this->assertEquals('John Doe', $m->getFirstAttribute('cN'));
+        $this->assertEquals('Doe, John', $m->getFirstAttribute('givenname'));
+        $this->assertEquals('Doe, John', $m->getFirstAttribute('GiVENnAme'));
+        $this->assertEquals([], $m->getAttribute('memberof'));
+        $this->assertEquals([], $m->getAttribute('mEMBEROF'));
+    }
+
+    /** @expectedException \UnexpectedValueException */
+    public function test_creating_entry_without_valid_dn_throws_exception()
+    {
+        $b = $this->newBuilder()->in('dc=acme,dc=org');
+
+        $m = $this->newModel([], $b);
+
+        $m->save();
+    }
+
+    public function test_creating_model_fires_events()
+    {
+        $c = $this->newConnectionMock();
+
+        $m = $this->newModel([], $this->newBuilder($c));
+
+        $d = Adldap::getEventDispatcher();
+
+        $firedCreating = false;
+        $firedCreated = false;
+
+        $d->listen(Creating::class, function (Creating $e) use (&$firedCreating) {
+            $this->assertInstanceOf(Model::class, $e->getModel());
+
+             $firedCreating = true;
+        });
+
+        $d->listen(Created::class, function (Created $e) use (&$firedCreated) {
+            $this->assertInstanceOf(Model::class, $e->getModel());
+
+            $firedCreated = true;
+        });
+
+        $c
+            ->shouldReceive('add')->once()->andReturn(true)
+            ->shouldReceive('read')->once()
+            ->shouldReceive('getEntries')->once();
+
+        $m->save([
+            'dn' => 'cn=jdoe,dc=acme,dc=org',
+        ]);
+
+        $this->assertTrue($firedCreating);
+        $this->assertTrue($firedCreated);
+    }
+
+    public function test_updating_model_fires_events()
+    {
+        $c = $this->newConnectionMock();
+
+        $m = $this->newModel([], $this->newBuilder($c));
+
+        $m->setRawAttributes([
+            'dn' => 'cn=jdoe,dc=acme,dc=org'
+        ]);
+
+        $d = Adldap::getEventDispatcher();
+
+        $firedUpdating = false;
+        $firedUpdated = false;
+
+        $d->listen(Updating::class, function (Updating $e) use (&$firedUpdating) {
+            $this->assertInstanceOf(Model::class, $e->getModel());
+
+            $firedUpdating = true;
+        });
+
+        $d->listen(Updated::class, function (Updated $e) use (&$firedUpdated) {
+            $this->assertInstanceOf(Model::class, $e->getModel());
+
+            $firedUpdated = true;
+        });
+
+        $c
+            ->shouldReceive('modifyBatch')->once()->andReturn(true)
+            ->shouldReceive('read')->once()
+            ->shouldReceive('getEntries')->once();
+
+        $m->save([
+            'cn' => 'new'
+        ]);
+
+        $this->assertTrue($firedUpdating);
+        $this->assertTrue($firedUpdated);
+    }
+
+    public function test_deleting_model_fires_events()
+    {
+        $c = $this->newConnectionMock();
+
+        $m = $this->newModel([], $this->newBuilder($c));
+
+        $m->setRawAttributes([
+            'dn' => 'cn=jdoe,dc=acme,dc=org'
+        ]);
+
+        $d = Adldap::getEventDispatcher();
+
+        $firedDeleting = false;
+        $firedDeleted = false;
+
+        $d->listen(Deleting::class, function (Deleting $e) use (&$firedDeleting) {
+            $this->assertInstanceOf(Model::class, $e->getModel());
+
+            $firedDeleting = true;
+        });
+
+        $d->listen(Deleted::class, function (Deleted $e) use (&$firedDeleted) {
+            $this->assertInstanceOf(Model::class, $e->getModel());
+
+            $firedDeleted = true;
+        });
+
+        $c->shouldReceive('delete')->once()->andReturn(true);
+
+        $m->delete();
+
+        $this->assertTrue($firedDeleting);
+        $this->assertTrue($firedDeleted);
+    }
+
+    public function test_model_events_can_be_listened_for_with_wildcard()
+    {
+        $c = $this->newConnectionMock();
+
+        $m = $this->newModel([], $this->newBuilder($c));
+
+        $m->setRawAttributes([
+            'dn' => 'cn=jdoe,dc=acme,dc=org'
+        ]);
+
+        $d = Adldap::getEventDispatcher();
+
+        $firedDeleting = false;
+        $firedDeleted = false;
+
+        $d->listen('Adldap\Models\Events\*', function ($event, $payload) use (&$firedDeleting, &$firedDeleted) {
+            if ($event == 'Adldap\Models\Events\Deleting') {
+                $firedDeleting = true;
+            } else if ($event == 'Adldap\Models\Events\Deleted') {
+                $firedDeleted = true;
+            }
+        });
+
+        $c->shouldReceive('delete')->once()->andReturn(true);
+
+        $m->delete();
+
+        $this->assertTrue($firedDeleting);
+        $this->assertTrue($firedDeleted);
+    }
+
+    public function test_retrieving_guid_with_other_schema_returns_proper_value()
+    {
+        $m = $this->newModel([
+            'entryuuid' => 'cdc718a0-8c3c-1034-8646-e30b83a2e38d',
+        ]);
+
+        $m->setSchema(new OpenLDAP());
+
+        $this->assertEquals($m->entryuuid[0], $m->getConvertedGuid());
     }
 }

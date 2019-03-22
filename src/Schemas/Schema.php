@@ -10,8 +10,9 @@ use Adldap\Models\Printer;
 use Adldap\Models\Computer;
 use Adldap\Models\Container;
 use Adldap\Models\OrganizationalUnit;
+use Adldap\Models\ForeignSecurityPrincipal;
 
-abstract class BaseSchema implements SchemaInterface
+abstract class Schema implements SchemaInterface
 {
     /**
      * {@inheritdoc}
@@ -94,9 +95,7 @@ abstract class BaseSchema implements SchemaInterface
     }
 
     /**
-     * The class name of the Computer model.
-     *
-     * @return string
+     * {@inheritdoc}
      */
     public function computerModel()
     {
@@ -120,9 +119,7 @@ abstract class BaseSchema implements SchemaInterface
     }
 
     /**
-     * The class name of the Contact model.
-     *
-     * @return string
+     * {@inheritdoc}
      */
     public function contactModel()
     {
@@ -130,9 +127,7 @@ abstract class BaseSchema implements SchemaInterface
     }
 
     /**
-     * The class name of the Container model.
-     *
-     * @return string
+     * {@inheritdoc}
      */
     public function containerModel()
     {
@@ -276,9 +271,7 @@ abstract class BaseSchema implements SchemaInterface
     }
 
     /**
-     * The class name of the Entry model.
-     *
-     * @return string
+     * {@inheritdoc}
      */
     public function entryModel()
     {
@@ -303,9 +296,7 @@ abstract class BaseSchema implements SchemaInterface
     }
 
     /**
-     * The class name of the Group model.
-     *
-     * @return string
+     * {@inheritdoc}
      */
     public function groupModel()
     {
@@ -374,6 +365,14 @@ abstract class BaseSchema implements SchemaInterface
     public function instanceType()
     {
         return 'instancetype';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function ipPhone()
+    {
+        return 'ipphone';
     }
 
     /**
@@ -454,6 +453,14 @@ abstract class BaseSchema implements SchemaInterface
     public function manager()
     {
         return 'manager';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function managedBy()
+    {
+        return 'managedby';
     }
 
     /**
@@ -659,6 +666,31 @@ abstract class BaseSchema implements SchemaInterface
     /**
      * {@inheritdoc}
      */
+    public function objectClassForeignSecurityPrincipal()
+    {
+        return 'foreignsecurityprincipal';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function objectClassModelMap()
+    {
+        return [
+            $this->objectClassComputer()                    => $this->computerModel(),
+            $this->objectClassContact()                     => $this->contactModel(),
+            $this->objectClassPerson()                      => $this->userModel(),
+            $this->objectClassGroup()                       => $this->groupModel(),
+            $this->objectClassContainer()                   => $this->containerModel(),
+            $this->objectClassPrinter()                     => $this->printerModel(),
+            $this->objectClassOu()                          => $this->organizationalUnitModel(),
+            $this->objectClassForeignSecurityPrincipal()    => $this->foreignSecurityPrincipalModel()
+        ];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function objectSid()
     {
         return 'objectsid';
@@ -721,9 +753,7 @@ abstract class BaseSchema implements SchemaInterface
     }
 
     /**
-     * The class name of the Organizational Unit model.
-     *
-     * @return string
+     * {@inheritdoc}
      */
     public function organizationalUnitModel()
     {
@@ -867,9 +897,7 @@ abstract class BaseSchema implements SchemaInterface
     }
 
     /**
-     * The class name of the Printer model.
-     *
-     * @return string
+     * {@inheritdoc}
      */
     public function printerModel()
     {
@@ -1047,6 +1075,22 @@ abstract class BaseSchema implements SchemaInterface
     /**
      * {@inheritdoc}
      */
+    public function mobile()
+    {
+        return 'mobile';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function otherMobile()
+    {
+        return 'othermobile';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function facsimile()
     {
         return 'facsimiletelephonenumber';
@@ -1133,13 +1177,24 @@ abstract class BaseSchema implements SchemaInterface
     }
 
     /**
-     * The class name of the User model.
-     *
-     * @return string
+     * {@inheritdoc}
      */
     public function userModel()
     {
         return User::class;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function userObjectClasses() : array
+    {
+        return [
+            $this->top(),
+            $this->person(),
+            $this->organizationalPerson(),
+            $this->objectClassUser(),
+        ];
     }
 
     /**
@@ -1164,5 +1219,13 @@ abstract class BaseSchema implements SchemaInterface
     public function versionNumber()
     {
         return 'versionnumber';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function foreignSecurityPrincipalModel()
+    {
+        return ForeignSecurityPrincipal::class;
     }
 }

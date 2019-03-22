@@ -90,12 +90,7 @@ class Factory
         $model = $this->schema->userModel();
 
         return (new $model($attributes, $this->query))
-            ->setAttribute($this->schema->objectClass(), [
-                $this->schema->top(),
-                $this->schema->person(),
-                $this->schema->organizationalPerson(),
-                $this->schema->user(),
-            ]);
+            ->setAttribute($this->schema->objectClass(), $this->schema->userObjectClasses());
     }
 
     /**

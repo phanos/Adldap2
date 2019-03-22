@@ -3,10 +3,12 @@
 namespace Adldap\Tests\Connections;
 
 use Adldap\Query\Builder;
-use Adldap\Query\Factory;
+use Adldap\Query\Factory as SearchFactory;
+use Adldap\Models\Factory as ModelFactory;
 use Adldap\Tests\TestCase;
 use Adldap\Connections\Ldap;
 use Adldap\Connections\Provider;
+use Adldap\Connections\DetailedError;
 use Adldap\Connections\ConnectionInterface;
 use Adldap\Configuration\DomainConfiguration;
 
@@ -71,8 +73,11 @@ class ProviderTest extends TestCase
             ->shouldReceive('setOptions')->once()
             ->shouldReceive('bind')->once()->withArgs(['username', 'password'])->andReturn(false);
 
+        $error = new DetailedError(42, 'Invalid credentials', '80090308: LdapErr: DSID-0C09042A');
+
         // Binding fails, retrieves last error.
         $connection->shouldReceive('getLastError')->once()->andReturn('error')
+            ->shouldReceive('getDetailedError')->once()->andReturn($error)
             ->shouldReceive('isBound')->once()->andReturn(true)
             ->shouldReceive('errNo')->once()->andReturn(1);
 
@@ -140,6 +145,7 @@ class ProviderTest extends TestCase
         // Re-binds as the administrator (fails)
         $connection->shouldReceive('bind')->once()->withArgs(['test', 'test'])->andReturn(false)
             ->shouldReceive('getLastError')->once()->andReturn('')
+            ->shouldReceive('getDetailedError')->once()->andReturn(new DetailedError(null, null, null))
             ->shouldReceive('isBound')->once()->andReturn(true)
             ->shouldReceive('errNo')->once()->andReturn(1)
             ->shouldReceive('close')->once()->andReturn(true);
@@ -211,62 +217,86 @@ class ProviderTest extends TestCase
     {
         $m = $this->newProvider(new Ldap());
 
-        $this->assertInstanceOf(Builder::class, $m->search()->groups());
+        $query = $m->search()->groups();
+
+        $this->assertInstanceOf(Builder::class, $query);
+        $this->assertEquals('(objectclass=group)', $query->getUnescapedQuery());
     }
 
     public function test_users()
     {
         $m = $this->newProvider(new Ldap());
 
-        $this->assertInstanceOf(Builder::class, $m->search()->users());
+        $query = $m->search()->users();
+
+        $this->assertInstanceOf(Builder::class, $query);
+        $this->assertEquals('(&(objectclass=user)(objectcategory=person)(!(objectclass=contact)))', $query->getUnescapedQuery());
     }
 
     public function test_containers()
     {
         $m = $this->newProvider(new Ldap());
 
-        $this->assertInstanceOf(Builder::class, $m->search()->containers());
+        $query = $m->search()->containers();
+
+        $this->assertInstanceOf(Builder::class, $query);
+        $this->assertEquals('(objectclass=container)', $query->getUnescapedQuery());
     }
 
     public function test_contacts()
     {
         $m = $this->newProvider(new Ldap());
 
-        $this->assertInstanceOf(Builder::class, $m->search()->contacts());
+        $query = $m->search()->contacts();
+
+        $this->assertInstanceOf(Builder::class, $query);
+        $this->assertEquals('(objectclass=contact)', $query->getUnescapedQuery());
     }
 
     public function test_computers()
     {
         $m = $this->newProvider(new Ldap());
 
-        $this->assertInstanceOf(Builder::class, $m->search()->computers());
+        $query = $m->search()->computers();
+
+        $this->assertInstanceOf(Builder::class, $query);
+        $this->assertEquals('(objectclass=computer)', $query->getUnescapedQuery());
     }
 
     public function test_ous()
     {
         $m = $this->newProvider(new Ldap());
 
-        $this->assertInstanceOf(Builder::class, $m->search()->contacts());
-    }
+        $query = $m->search()->ous();
 
-    public function test()
-    {
-        $m = $this->newProvider(new Ldap());
-
-        $this->assertInstanceOf(Builder::class, $m->search()->contacts());
+        $this->assertInstanceOf(Builder::class, $query);
+        $this->assertEquals('(objectclass=organizationalunit)', $query->getUnescapedQuery());
     }
 
     public function test_printers()
     {
         $m = $this->newProvider(new Ldap());
 
-        $this->assertInstanceOf(Builder::class, $m->search()->printers());
+        $query = $m->search()->printers();
+
+        $this->assertInstanceOf(Builder::class, $query);
+        $this->assertEquals('(objectclass=printqueue)', $query->getUnescapedQuery());
     }
 
     public function test_search()
     {
         $m = $this->newProvider(new Ldap());
 
-        $this->assertInstanceOf(Factory::class, $m->search());
+        $query = $m->search();
+
+        $this->assertInstanceOf(SearchFactory::class, $query);
+        $this->assertEquals('', $query->getUnescapedQuery());
+    }
+
+    public function test_make()
+    {
+        $m = $this->newProvider(new Ldap());
+
+        $this->assertInstanceOf(ModelFactory::class, $m->make());
     }
 }

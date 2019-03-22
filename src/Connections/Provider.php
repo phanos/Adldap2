@@ -2,6 +2,7 @@
 
 namespace Adldap\Connections;
 
+use Adldap\Adldap;
 use InvalidArgumentException;
 use Adldap\Auth\Guard;
 use Adldap\Auth\GuardInterface;
@@ -182,7 +183,11 @@ class Provider implements ProviderInterface
      */
     public function getDefaultGuard(ConnectionInterface $connection, DomainConfiguration $configuration)
     {
-        return new Guard($connection, $configuration);
+        $guard = new Guard($connection, $configuration);
+
+        $guard->setDispatcher(Adldap::getEventDispatcher());
+
+        return $guard;
     }
 
     /**
@@ -191,7 +196,7 @@ class Provider implements ProviderInterface
     public function make()
     {
         return new ModelFactory(
-            $this->search()->getQuery()
+            $this->search()->newQuery()
         );
     }
 

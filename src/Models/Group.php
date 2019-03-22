@@ -99,17 +99,17 @@ class Group extends Entry
     /**
      * Adds an entry to the current group.
      *
-     * @param string|Entry $entry
+     * @param string|Entry $member
      *
      * @throws InvalidArgumentException When the given entry is empty or contains no distinguished name.
      *
      * @return bool
      */
-    public function addMember($entry)
+    public function addMember($member)
     {
-        $entry = ($entry instanceof Model ? $entry->getDn() : $entry);
+        $member = ($member instanceof Model ? $member->getDn() : $member);
 
-        if (is_null($entry)) {
+        if (is_null($member)) {
             throw new InvalidArgumentException(
                 'Cannot add member to group. The members distinguished name cannot be null.'
             );
@@ -118,7 +118,7 @@ class Group extends Entry
         $mod = $this->newBatchModification(
             $this->schema->member(),
             LDAP_MODIFY_BATCH_ADD,
-            [$entry]
+            [$member]
         );
 
         return $this->addModification($mod)->save();
@@ -127,26 +127,26 @@ class Group extends Entry
     /**
      * Removes an entry from the current group.
      *
-     * @param string|Entry $entry
+     * @param string|Entry $member
      *
      * @throws InvalidArgumentException
      *
      * @return bool
      */
-    public function removeMember($entry)
+    public function removeMember($member)
     {
-        $entry = ($entry instanceof Model ? $entry->getDn() : $entry);
+        $member = ($member instanceof Model ? $member->getDn() : $member);
 
-        if (is_null($entry)) {
+        if (is_null($member)) {
             throw new InvalidArgumentException(
-                'Cannot add member to group. The members distinguished name cannot be null.'
+                'Cannot remove member to group. The members distinguished name cannot be null.'
             );
         }
 
         $mod = $this->newBatchModification(
             $this->schema->member(),
             LDAP_MODIFY_BATCH_REMOVE,
-            [$entry]
+            [$member]
         );
 
         return $this->addModification($mod)->save();
@@ -246,8 +246,11 @@ class Group extends Entry
         );
 
         if ($key && count($matches) == 3) {
+            // Retrieve the ending range number.
             $to = $matches[2][0];
 
+            // Retrieve the current groups members from the
+            // current range string (ex. 'member;0-50').
             $members = $this->getMembersFromAttribute($key);
 
             // If the query already included all member results (indicated
@@ -257,14 +260,19 @@ class Group extends Entry
                 return $members;
             }
 
+            // Determine the amount of members we're requesting per query.
+            $range = $to - $matches[1][0];
+
+            // Set our starting range to our last end range plus one.
             $from = $to + 1;
 
-            // We'll determine the member range simply
-            // by doubling the selected from value.
-            $to = $from * 2;
+            // We'll determine the new end range by adding the
+            // total range to our new starting range.
+            $to = $from + $range;
 
             // We'll need to query for the current model again but with
             // a new range to retrieve the other members.
+            /** @var Group $group */
             $group = $this->query->newInstance()->findByDn(
                 $this->getDn(),
                 [$this->query->getSchema()->memberRange($from, $to)]
